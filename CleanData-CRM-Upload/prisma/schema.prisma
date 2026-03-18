@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id                   String    @id @default(uuid())
+  name                 String
+  slug                 String    @unique
+  plan                 String    @default("starter")
+  maxContacts          Int       @default(1000)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  billingEmail         String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  users               User[]
+  contacts            Contact[]
+  jobs                EnrichmentJob[]
+  salesforceConnections SalesforceConnection[]
+  auditLogs           AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  tenantId      String
+  role          String   @default("member")
+  firstName     String?
+  lastName      String?
+  avatarUrl     String?
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model SalesforceConnection {
+  id             String   @id @default(uuid())
+  tenantId       String
+  instanceUrl    String
+  accessToken    String
+  refreshToken   String
+  issuedAt       DateTime?
+  expiresAt      DateTime?
+  isActive       Boolean  @default(true)
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("salesforce_connections")
+}
+
+model Contact {
+  id               String    @id @default(uuid())
+  tenantId         String
+  salesforceId     String?
+  
+  // Core fields
+  firstName        String?
+  lastName         String?
+  email            String?
+  phone            String?
+  mobilePhone      String?
+  title            String?
+  company          String?
+  accountId        String?
+  
+  // ABN Lookup data
+  abn              String?
+  entityType       String?
+  entityStatus     String?
+  gstRegistered    Boolean?
+  businessAddress  Json?
+  registrationDate DateTime?
+  
+  // Website enrichment
+  websiteDescription String?
+  socialLinks      Json?
+  services         String[]
+  techStack        String[]
+  
+  // Enrichment metadata
+  enrichedAt       DateTime?
+  enrichmentSource String?
+  enrichmentScore  Decimal?  @db.Decimal(3, 2)
+  
+  // Deduplication
+  duplicateOfId    String?
+  isDuplicate      Boolean   @default(false)
+  matchScore       Decimal?  @db.Decimal(3, 2)
+  matchReason      String?
+  
+  // Metadata
+  lastSyncedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  duplicateOf      Contact?  @relation("DuplicateContacts", fields: [duplicateOfId], references: [id])
+  duplicates       Contact[] @relation("DuplicateContacts")
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([company])
+  @@index([isDuplicate])
+  @@index([enrichedAt])
+  @@map("contacts")
+}
+
+model EnrichmentJob {
+  id                String   @id @default(uuid())
+  tenantId          String
+  jobType           String   // 'dedupe', 'abn_lookup', 'website_scrape', 'full_enrichment'
+  status            String   @default("pending") // pending, running, completed, failed, cancelled
+  totalRecords      Int?
+  processedRecords  Int      @default(0)
+  failedRecords     Int      @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  errorMessage      String?
+  results           Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("enrichment_jobs")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  userId      String?
+  action      String   // create, update, delete, enrich, merge
+  entityType  String   // contact, job, settings
+  entityId    String?
+  oldData     Json?
+  newData     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// Stripe webhook events tracking
+model StripeEvent {
+  id        String   @id
+  type      String
+  data      Json
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([processed])
+  @@map("stripe_events")
+}

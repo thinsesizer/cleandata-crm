@@ -1,0 +1,73 @@
+// Additional Prisma models for new features
+
+model Webhook {
+  id                String   @id @default(uuid())
+  tenantId          String
+  url               String
+  events            String[] // ['contact.created', 'contact.updated', '*']
+  secret            String
+  isActive          Boolean  @default(true)
+  lastTriggeredAt   DateTime?
+  successCount      Int      @default(0)
+  failureCount      Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries        WebhookDelivery[]
+
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id          String   @id @default(uuid())
+  webhookId   String
+  event       String
+  payload     Json
+  success     Boolean
+  statusCode  Int?
+  error       String?
+  createdAt   DateTime @default(now())
+
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
+}
+
+model Partner {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  email       String
+  apiKey      String   @unique
+  isActive    Boolean  @default(true)
+  rateLimit   Int      @default(1000) // requests per hour
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([apiKey])
+  @@map("partners")
+}
+
+model ApiUsage {
+  id            String   @id @default(uuid())
+  tenantId      String
+  partnerId     String?
+  endpoint      String
+  method        String
+  statusCode    Int
+  responseTime  Int      // milliseconds
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([endpoint])
+  @@map("api_usage")
+}
