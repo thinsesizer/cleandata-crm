@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import jsforce from 'jsforce'
-import { createClient } from '../../../../../lib/supabase/server'
+import { createClient } from '../../../../lib/supabase/server'
 
 const prisma = new PrismaClient()
 
